@@ -36,28 +36,38 @@ graph TD
     class CAL,WA Tools;
 ```
 
-## 3. Technology Stack (Open Source Focus)
+## 3. Technology Stack Options (Open Source Focus)
 
-### A. Telephony & Agent Orchestration
-*   **Selected Framework:** **Vocode** (primary recommendation for strong SIP integration out of the box).
-*   **Role:** Handles the SIP connection from the on-prem PBX and manages the audio streaming (RTP) to avoid latency. Handlers interruption (barge-in) and coordinates the STT, LLM, and TTS models.
+The system requires combining one component from each of the following 4 layers to create the complete AI Receptionist. 
 
-### B. Speech-to-Text (ASR)
-*   **Selected Tool:** **Faster-Whisper** (`large-v3` or `distil-large-v3`).
-*   **Role:** Converts the patient's voice to text with high speed. Distil-large models are chosen heavily for recognizing Indian accents securely, with transcription completion happening within milliseconds on GPU.
+### Layer 1: Telephony & Agent Orchestration (The Backbone)
+Handles the SIP connection from the on-prem PBX, streaming audio, and conversation interruptions (barge-in).
+*   **Vocode (Highly Recommended):** Easiest for telephony, built specifically for phone calls with strong native SIP and barge-in support.
+*   **Pipecat:** Modular and powerful for highly customized pipelines, but requires more manual setup for raw SIP trunks.
+*   **LiveKit Agents:** Extremely low latency (WebRTC focused), but their open-source SIP integration is more complex to self-host.
 
-### C. Large Language Model (Brain)
-*   **Selected Tool:** **Qwen-2.5 (8B/14B)** or **Llama-3 (8B)**.
-*   **Deployment:** **vLLM** (for lowest possible time-to-first-token).
-*   **Role:** Core intent recognition, dialogue generation, and triggering tools (Calendar and WhatsApp APIs) based on conversation flow. Excellent multilingual comprehension (English/Hindi).
+### Layer 2: Speech-to-Text / ASR (The Ears)
+Converts patient audio (with Indian accents) into text in milliseconds.
+*   **Faster-Whisper (Recommended):** The gold standard for self-hosted STT. `distil-large-v3` handles Indian English and Hindi with extreme speed and accuracy on a GPU.
+*   **DeepSpeech:** Lighter but significantly less accurate with diverse accents.
+*   **Vosk:** Good for CPU-only environments, but lacks the medical context accuracy of Whisper.
 
-### D. Text-to-Speech (Vocals)
-*   **Selected Tool:** **ChatTTS** or **XTTSv2** (by Coqui).
-*   **Role:** Streaming synthesis of the LLM output. Generates conversational vocal mannerisms (like taking breaths) ensuring the "Sarvam" level of realism without API costs.
+### Layer 3: Large Language Model (The Brain)
+Handles intent recognition, dialogue generation, and Function Calling (Calendar/WhatsApp).
+*   **Qwen-2.5 (8B/14B) via vLLM (Highly Recommended):** Unmatched in its size class for multilingual (English/Hindi) support and strict function-calling adherence.
+*   **Llama-3.1 (8B) via vLLM:** Extremely fast and conversational, but slightly less robust at mixed Hindi/English than Qwen.
+*   **Mistral-Nemo (12B) via vLLM:** Large context window and follows instructions well, a solid middle-ground.
 
-### E. Integrations
-*   **Calendar Integration:** Requires an internal microservice exposing endpoints (e.g. `check_availability`, `book_appointment`) corresponding to the LLM's defined tool set.
-*   **WhatsApp Updates:** Use **Baileys (Web API)** for zero-cost messaging, or the **Meta WhatsApp Business API**.
+### Layer 4: Text-to-Speech (The Voice)
+Generates human-sounding, streaming audio to reply to the patient.
+*   **XTTSv2 (Recommended for Latency):** Extremely stable, high-quality voice cloning, and supports streaming (starts speaking before the LLM finishes the sentence).
+*   **ChatTTS (Recommended for Realism):** Injects laughs, breath sounds, and conversational pauses for an unmatched "human" feel, though slightly more unpredictable.
+*   **Piper TTS:** CPU-friendly and very fast, but sounds noticeably more robotic.
+
+### 🌟 Recommended Hardware-Optimized Stack
+For the lowest possible latency (< 800ms Time-To-First-Byte) on an on-premises GPU server:
+
+**PBX** ↔️ **Vocode** ↔️ **Faster-Whisper** ↔️ **vLLM (Qwen-2.5 8B)** ↔️ **XTTSv2**
 
 ## 4. Hardware Requirements
 For an uncompromised experience devoid of cloud API delays, a local Agent Server is necessary.
