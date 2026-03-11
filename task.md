@@ -1,9 +1,9 @@
 # AI Receptionist Project Checklist
 
 ## Planning & Architecture
-- [/] Document High-Level Architecture
-- [ ] Define Open-Source Technology Stack
-- [ ] Diagram the System Flow
+- [x] Document High-Level Architecture
+- [x] Define Open-Source Technology Stack
+- [x] Diagram the System Flow
 - [ ] Draft Initial Prompts and Function Call Definitions
 
 ## Proof of Concept (PoC) Implementation
