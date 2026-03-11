@@ -36,11 +36,15 @@ graph TD
     class CAL,WA Tools;
 ```
 
-## 3. Technology Stack (Open Source Focus)
+## 3. Technology Stack Options (Open Source Focus)
 
-### A. Telephony & Agent Orchestration
-*   **Selected Framework:** **Vocode** (primary recommendation for strong SIP integration out of the box).
-*   **Role:** Handles the SIP connection from the on-prem PBX and manages the audio streaming (RTP) to avoid latency. Handlers interruption (barge-in) and coordinates the STT, LLM, and TTS models.
+The system requires combining one component from each of the following 4 layers to create the complete AI Receptionist. 
+
+### Layer 1: Telephony & Agent Orchestration (The Backbone)
+Handles the SIP connection from the on-prem PBX, streaming audio, and conversation interruptions (barge-in).
+*   **Vocode (Highly Recommended):** Easiest for telephony, built specifically for phone calls with strong native SIP and barge-in support.
+*   **Pipecat:** Modular and powerful for highly customized pipelines, but requires more manual setup for raw SIP trunks.
+*   **LiveKit Agents:** Extremely low latency (WebRTC focused), but their open-source SIP integration is more complex to self-host.
 
 ### B. Speech-to-Text (ASR)
 *   **Selected Tool:** **Faster-Whisper** (`large-v3` or `distil-large-v3`).
