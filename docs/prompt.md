@@ -3,3 +3,57 @@ So, my friend and I got to talking, and we came up with a use case where a docto
 
 So the thing is, I don't want to do something else. See, I have a PBX server, so what will I do is, that will be serving as my alternative, right? So be an engineer, a design engineer, an architect, system engineer, architect of AI and everything. So tell me, you can search the web too, and tell me if I can, the thing is, if I can do this, and I have a PBX and I will have an agent server where the model will be hosted and it will be talking, like it will be talking through the agent. So what should it be? I'm a little clueless about this and how should it be. So keep in mind, the agent should be open source and the PBX is hosted like on-premises. And also, the model should be open source and the speed, my clients are Indian, so yeah, that's another thing. So let's go step by step.
 
+
+
+
+
+---------------------------------
+
+
+
+so the concept is , mira, is a receptist ... who knows about the doctors appointments and everything 
+
+
+
+so this is my product mira 
+
+
+i will sell it to doctors first 
+when i will do is ... suppose i have three doctors as my client ,...so i will sell mira indivially 
+it will know about the doctors indivially and will answer to for that perticular doctor how is this possible 
+
+
+
+
+supose three indiviall doctors have three indivial identity
+
+
+doctor 1 
+- name 
+- loction 
+- speciazaion 
+- and any more 
+
+
+
+doctor 2
+- name 
+- loction 
+- speciazaion 
+- and any more 
+
+
+
+doctor 3 
+- name 
+- loction 
+- speciazaion 
+- and any more
+
+
+each will be different 
+and the agent will anser for that perticular doctor onlly 
+
+supose 
+caller calls doctor 1 -> it will get to knwo abotu doctor 1 only not doctor 2 and 3 this is strictly prohibitted 
+there should be no cross conect ... no jailbreak for this 
