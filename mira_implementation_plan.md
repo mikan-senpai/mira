@@ -1,69 +1,202 @@
-# Mira: Layer-by-Layer Implementation Plan
+# Mira: Implementation Plan (LOCKED IN ✅)
 
-To build Mira's multi-tenant architecture efficiently, we need to construct it layer by layer, starting from the foundation (infrastructure) up to the specific integrations. We will ensure each layer is functional before moving to the next.
+> **All components are 100% open source and self-hosted. Zero API costs. Zero vendor lock-in.**
 
-## Phase 1: The Core Compute Infrastructure
-Before we can run models, we need the hardware and the environment to host them.
+## Final Technology Stack
 
-### Step 1.1: Provision the Agent Server
-1.  **Hardware Specification:** Secure a server with an NVIDIA GPU (e.g., RTX 4090, A5000, or rent a cloud instance like RunPod/AWS g5.xlarge).
-2.  **OS Preparation:** Install Ubuntu Server 22.04 LTS.
-3.  **Drivers & Runtimes:** Install NVIDIA drivers and the NVIDIA Container Toolkit to allow Docker containers to access the GPU. 
-4.  **Network Setup:** Ensure the server has a static, public IP Address, or a secure tunnel (like Cloudflare Tunnel or ngrok) so the PBX can communicate with it over SIP.
+| Layer | Tool | License | Runs On |
+|---|---|---|---|
+| **PBX** | FusionPBX / FreeSWITCH | Open Source | On-Prem Server |
+| **Audio Bridge** | `mod_audio_stream` | Open Source | FreeSWITCH Module |
+| **Orchestrator** | **Pipecat** (Python) | Open Source | Agent Server |
+| **STT (Ears)** | **Faster-Whisper** (`distil-large-v3`) | MIT | Agent Server (GPU) |
+| **LLM (Brain)** | **Sarvam 30B** via Ollama | Apache 2.0 | Agent Server (GPU) |
+| **TTS (Voice)** | **XTTSv2** (Coqui) / **ChatTTS** | Open Source | Agent Server (GPU) |
+| **Calendar** | Google Calendar API / CalDAV | Free | Cloud / Self-Hosted |
+| **WhatsApp** | **Baileys** (Node.js) | Open Source | Agent Server |
 
-### Step 1.2: Host the Local AI Models
-We will run the models inside Docker containers for easy management and scaling.
-1.  **LLM Deployment (vLLM):** Pull the vLLM docker image and deploy `Qwen/Qwen2.5-7B-Instruct`. Verify it’s running by sending a test prompt to its OpenAI-compatible API endpoint.
-2.  **STT Deployment (Faster-Whisper):** Pull a pre-built Faster-Whisper API container (or write a small FastAPI wrapper around it). Verify it can accept audio files and return text quickly.
-3.  **TTS Deployment (XTTSv2):** Pull the Coqui XTTS docker image. Verify it can accept a text string and stream generated audio back.
+### Hardware Requirements
+- **GPU:** NVIDIA RTX 4090 (24GB) or A5000 — runs all 3 models simultaneously
+- **CPU:** 8+ cores recommended
+- **RAM:** 32GB minimum
+- **OS:** Ubuntu Server 22.04 LTS (Dockerized)
+- **Network:** Static IP or tunnel (for PBX → Agent Server communication)
 
-## Phase 2: The Multi-Tenant Database & API Fencing
-We need to create the system that stores doctor profiles and prevents cross-talk.
+---
 
-### Step 2.1: Database Setup
-1.  **Install PostgreSQL:** Set up a local or hosted PostgreSQL instance.
-2.  **Define Schema:** Create the `doctor_profiles` table:
-    *   `doctor_id` (Primary Key)
-    *   `inbound_phone_number` (The extension on the PBX)
-    *   `name`
-    *   `specialization`
-    *   `location`
-    *   `custom_rules` (e.g., "Always ask for age first")
+## Phase 1: Core Compute Infrastructure
 
-### Step 2.2: Build the Routing API
-1.  **Create a Python API (FastAPI):** Write a service that connects to PostgreSQL.
-2.  **Implement `get_profile(phone_number)`:** When called, it looks up the inbound DID (phone number) and returns the JSON profile for that specific doctor.
-3.  **Implement API Fencing:** Create wrapper endpoints for the external tools (Calendar/WhatsApp) that *require* the `doctor_id` as an argument from the orchestrator, preventing the LLM from trying to access other doctors' data.
+### Step 1.1: Prepare the Agent Server
+```bash
+# Install Docker
+curl -fsSL https://get.docker.com | sh
 
-## Phase 3: The Orchestrator (Vocode)
-This is the most critical layer. It ties the telephony, the models, and the database together.
+# Install NVIDIA Container Toolkit
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo systemctl restart docker
+```
 
-### Step 3.1: Set up Vocode Telephony
-1.  **Install Vocode:** Initialize a new Python project and install the `vocode` package.
-2.  **Configure SIP Inbound (FusionPBX/FreeSWITCH):** Set up the `TelephonyServer` in Vocode. Since you are using FreeSWITCH, you will create a new SIP Profile or Gateway in FusionPBX that points directly to the Vocode server's IP and Port, routing specific extensions (DID) to it.
-3.  **Configure Model Endpoints:** Point Vocode's configuration to the local IPs/ports we set up in Phase 1 for vLLM, Faster-Whisper, and XTTS.
+### Step 1.2: Deploy Sarvam 30B via Ollama
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
 
-### Step 3.2: Implement Dynamic Prompting
-1.  **Extract the Caller ID/DID:** Modify the Vocode call handler to capture the number the patient dialed.
-2.  **Call the Routing API:** Before instantiating the Vocode `StreamingConversation`, call the API developed in Step 2.2 to fetch the correct doctor's profile.
-3.  **Inject System Prompt:** Use the fetched data to inject the highly specific, isolated system prompt into the LLM configuration for this active call. 
+# Pull Sarvam 30B (Apache 2.0, Indian languages)
+ollama pull sarvam-30b
 
-## Phase 4: Integrations (Calendar & WhatsApp)
-Now we build the tools the LLM can trigger.
+# Verify — should respond fluently in Hindi/English
+ollama run sarvam-30b "Namaste, aap kaise hain? Mujhe ek appointment book karni hai."
+```
 
-### Step 4.1: Calendar Booking Service
-1.  **Develop the Tool:** Write a Python function `check_availability(doctor_id, date)` that connects to a generic calendar backend (e.g., Google Calendar API via Service Accounts). Use the `doctor_id` to select the right authenticated token/calendar ID.
-2.  **Develop Booking Function:** Write `book_appointment(doctor_id, time, patient_name)`.
-3.  **Register Tools:** Add these functions to the Vocode/LLM integration layer so Qwen knows it can use them mid-conversation.
+### Step 1.3: Deploy Faster-Whisper (STT)
+```bash
+# Using Docker
+docker run -d --gpus all -p 8001:8000 \
+  --name whisper-server \
+  fedirz/faster-whisper-server:latest \
+  --model distil-whisper/distil-large-v3
+```
 
-### Step 4.2: WhatsApp Notifications
-1.  **Set up Baileys / Meta API:** Choose a WhatsApp provider.
-2.  **Develop Notification Function:** Write a simple webhook or script that sends a message: *"New Appointment at {time} for {name}"* to the doctor's registered phone number (fetched from the database).
-3.  **Trigger on Booking:** Call this function immediately *after* the `book_appointment` function successfully exits.
+### Step 1.4: Deploy XTTSv2 (TTS)
+```bash
+# Using Docker
+docker run -d --gpus all -p 8002:8000 \
+  --name xtts-server \
+  ghcr.io/coqui-ai/xtts-streaming-server:latest
+```
 
-## Phase 5: Testing & Go-Live Strategy
+### Step 1.5: Install Pipecat (Orchestrator)
+```bash
+python3 -m venv mira-env
+source mira-env/bin/activate
+pip install "pipecat-ai[websocket,silero]"
+```
 
-1.  **Latency Benchmarking:** Test the Time-To-First-Byte. If it's over 1 second, profile the pipeline to see if STT, LLM generation, or TTS is the bottleneck.
-2.  **"Red Teaming" (Jailbreak Testing):** Deliberately call Doctor 1's number and try to trick Mira into revealing information about Doctor 2 or bypassing the calendar tools. Ensure the prompt logic holds firm.
-3.  **PBX Pilot:** Route real (but controlled test) calls from the PBX into the Agent Server and monitor audio quality (RTP packet loss) over the SIP trunk.
-4.  **Doctor 1 Onboarding:** Launch with one trusted doctor client before scaling up.
+---
+
+## Phase 2: Multi-Tenant Database & API Fencing
+
+### Step 2.1: PostgreSQL Setup
+```bash
+sudo apt install postgresql postgresql-contrib
+sudo -u postgres createdb mira
+```
+
+### Step 2.2: Doctor Profiles Schema
+```sql
+CREATE TABLE doctor_profiles (
+    doctor_id       TEXT PRIMARY KEY,
+    did_number      TEXT UNIQUE NOT NULL,
+    name            TEXT NOT NULL,
+    specialization  TEXT,
+    location        TEXT,
+    working_hours   JSONB,
+    calendar_id     TEXT,
+    whatsapp_number TEXT,
+    custom_rules    TEXT
+);
+
+-- Example: Onboard Doctor 1
+INSERT INTO doctor_profiles VALUES (
+    'DR001', '1001', 'Dr. Sharma', 'Cardiologist',
+    '101 MG Road, Bangalore',
+    '{"mon":"09:00-17:00","tue":"09:00-17:00","wed":"09:00-13:00"}',
+    'gcal_dr_sharma@group.calendar.google.com',
+    '+919876543210',
+    'Always ask for patient age and existing conditions before booking.'
+);
+```
+
+### Step 2.3: FastAPI Routing Service
+A Python microservice that:
+1. `GET /profile?doctor_id=DR001` → Returns the doctor JSON.
+2. `POST /book` → Books appointment, **forces** `doctor_id` from session (LLM can't override).
+3. `POST /notify` → Sends WhatsApp message to the doctor's number.
+
+---
+
+## Phase 3: Telephony Bridge (FusionPBX → Pipecat)
+
+### Step 3.1: Install `mod_audio_stream`
+```bash
+sudo apt install freeswitch-mod-audio-stream
+# Enable in /etc/freeswitch/autoload_configs/modules.conf.xml
+# <load module="mod_audio_stream"/>
+sudo systemctl restart freeswitch
+```
+
+### Step 3.2: FusionPBX Dialplan (No-Answer → Mira)
+```xml
+<!-- Doctor's extension rings for 15 seconds -->
+<action application="set" data="call_timeout=15"/>
+<action application="bridge" data="user/${dialed_extension}@${domain_name}"/>
+
+<!-- If no answer, stream audio to Mira Agent Server -->
+<anti-action application="audio_stream"
+  data="wss://AGENT_SERVER_IP:8765/ws?doctor_id=DR001"/>
+```
+
+### Step 3.3: Pipecat WebSocket Agent
+The Python agent that:
+1. Receives μ-law 8kHz audio from `mod_audio_stream`.
+2. Extracts `doctor_id` from the WebSocket URL query parameter.
+3. Fetches the doctor profile from the Routing API.
+4. Dynamically builds the system prompt (isolated to this doctor only).
+5. Runs the pipeline: **Audio → Faster-Whisper → Sarvam 30B → XTTSv2 → Audio back**.
+
+---
+
+## Phase 4: Integrations (Calendar + WhatsApp)
+
+### Step 4.1: Calendar Functions (LLM Tools)
+```python
+# Registered as tool functions the LLM can call
+def check_availability(date: str) -> list[str]:
+    """Returns available time slots for the doctor on the given date."""
+    # Uses doctor_id from the session — LLM cannot override
+    ...
+
+def book_appointment(date: str, time: str, patient_name: str) -> dict:
+    """Books appointment, creates calendar event, triggers WhatsApp notification."""
+    # Scoped to doctor_id from session
+    ...
+```
+
+### Step 4.2: WhatsApp via Baileys
+```javascript
+// Node.js microservice using Baileys
+const { makeWASocket } = require('@whiskeysockets/baileys');
+// Sends: "📅 New appointment: [Name] on [Date] at [Time]"
+```
+
+---
+
+## Phase 5: Testing & Go-Live
+
+| Test | Method | Pass Criteria |
+|---|---|---|
+| **Voice Loop** | Microphone → STT → LLM → TTS → Speaker | Coherent response in < 2s |
+| **SIP Softphone** | Zoiper → FusionPBX → Mira | Full booking conversation works |
+| **Latency** | Measure TTFB across pipeline | < 1 second |
+| **Isolation** | Call Dr.1's line, ask about Dr.2 | Mira refuses / says "I only manage Dr. Sharma's schedule" |
+| **Jailbreak** | Prompt injection attempts | No cross-tenant data leaked |
+| **Pilot** | Live with 1 real doctor | Successful appointment + WhatsApp notification |
+
+---
+
+## Build Order (Start Here ↓)
+| # | What to Build | Depends On | Estimated Time |
+|---|---|---|---|
+| **1** | Install Ollama + Sarvam 30B | Server + GPU | 30 mins |
+| **2** | Deploy Faster-Whisper + XTTSv2 Docker | Server + GPU | 30 mins |
+| **3** | Write Pipecat voice loop (mic test) | Steps 1-2 | 2-3 hours |
+| **4** | Setup PostgreSQL + doctor profiles | Server | 1 hour |
+| **5** | Install `mod_audio_stream` + dialplan | FusionPBX access | 2-3 hours |
+| **6** | Build Pipecat WebSocket server | Steps 3-5 | 3-4 hours |
+| **7** | Calendar + WhatsApp integrations | Step 6 | 2-3 hours |
+| **8** | Red team testing + pilot | Everything | 1-2 days |
